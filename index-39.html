@@ -70,6 +70,18 @@ tr.void td{text-decoration:line-through;color:#a9b3bc}
 .rc .hd{text-align:center;border-bottom:2px solid #25408f;padding-bottom:8px;margin-bottom:10px}
 @media print{body.printing>*:not(#printArea){display:none!important}body.printing #printArea{display:block}body{background:#fff}}
 @media(max-width:860px){.logo img{width:40px;height:40px;display:inline-block;vertical-align:middle;margin:0 0 0 6px}.logo .em{display:none}.layout{flex-direction:column}.side{width:auto;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:8px 10px;border-left:0;border-bottom:1px solid var(--line);gap:8px}.logo{font-size:20px}.logo small{display:none}#nav{flex-direction:row;flex-wrap:wrap}#nav button{padding:7px 9px}.who{margin:0;border:0;padding:0;flex-direction:row;align-items:center}main{padding:12px}}
+
+/* وضوح أعلى: كتابة سوداء غامقة */
+@media screen{:root{--txt:#000;--mut:#1f2933}
+body{font-weight:600}
+label{color:#000;font-weight:700;font-size:14px}
+input,select,textarea{color:#000;font-weight:700;border:1.5px solid #6b7a8c}
+input::placeholder,textarea::placeholder{color:#4a5563;font-weight:600}
+th{color:#000;font-weight:700}td{color:#000}
+.hint{color:#1f2933;font-weight:600}
+.stat span{color:#000;font-weight:700;font-size:13px}
+#nav button{font-weight:700}
+tr.void td{color:#7b8591}}
 </style>
 </head>
 <body>
