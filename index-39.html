@@ -288,13 +288,15 @@ ${withDocs?docHTML(p):''}
 <h3>دفعة الآن (اختياري)</h3>${payHTML(p,false)}<div class="summary" id="${p}sum"></div>`}
 function payHTML(p,withDate,withFor){return`<div class="grid">${withFor?`<div><label>الدفعة دي لـ *</label><select id="${p}for"><option value="stay">🛏️ الإقامة</option><option value="other">🧪 التحاليل والبنود التانية</option></select></div>`:''}
 <div><label>المبلغ المدفوع</label><input type="number" min="0" step="0.01" id="${p}pa" oninput="calc('${p}')"></div>
-<div><label>المستلم (الموظف) *</label><select id="${p}rcv" onchange="SafeStore.setItem('masar_rcv',this.value)">${rcvOpts()}</select></div>
+<div><label>المستلم (الموظف) * — اكتب أي اسم أو اختار</label><input id="${p}rcv" list="${p}rcvDL" value="${esc(rcvLast())}" placeholder="اكتب اسم المستلم" onfocus="this.select()" onchange="SafeStore.setItem('masar_rcv',this.value.trim())"><datalist id="${p}rcvDL">${rcvAll().map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
 <div><label>طريقة الدفع</label><select id="${p}pm" onchange="refToggle('${p}')">${DB.settings.methods.map(m=>`<option>${esc(m)}</option>`).join('')}</select></div>
 <div class="${p}ref" style="display:none"><label>البنك / الجهة</label><input id="${p}bank"></div>
 <div class="${p}ref" style="display:none"><label>رقم العملية / المرجع *</label><input id="${p}txn"></div>
 ${withDate?`<div><label>تاريخ ووقت الدفع</label><input type="datetime-local" id="${p}pat" value="${localInput()}"></div>`:''}</div>
 <div class="hint ${p}ref" style="display:none;margin-top:6px">سجّل المرجع فقط. لا تكتب رقم بطاقة أو رقم حساب كامل أو أي رقم سري.</div>`}
 function rcvList(){const L=(DB.settings.receivers||[]).filter(Boolean);return L.length?L:[ME.name]}
+function rcvAll(){const s=new Set([...rcvList(),...DB.payments.map(p=>p.receiver).filter(Boolean),...(DB.users||[]).filter(u=>u.active!==false).map(u=>u.name).filter(Boolean)]);return[...s]}
+function rcvLast(){const l=SafeStore.getItem('masar_rcv');return l||rcvList()[0]}
 function rcvOpts(){const L=rcvList(),last=SafeStore.getItem('masar_rcv'),sel=L.includes(last)?last:L[0];return L.map(n=>`<option ${n===sel?'selected':''}>${esc(n)}</option>`).join('')}
 const rcvOf=p=>p.receiver||p.by;
 function refToggle(p){const show=$('#'+p+'pm').value!=='كاش';document.querySelectorAll('.'+p+'ref').forEach(e=>e.style.display=show?'':'none')}
@@ -312,9 +314,9 @@ function readCharge(p,pid){const si=$('#'+p+'svc').value;if(si===''){alert('اخ
  const sname=si==='custom'?$('#'+p+'cname').value.trim():DB.settings.services[si].name;if(!sname){alert('اكتب اسم البند');return null}
  const qty=qtyOf(p),unit=r2(val(p+'fee')),fee=feeOf(p),dAmt=discOf(p,fee),dr=$('#'+p+'dr').value.trim();if(dAmt>0&&!dr){alert('اكتب سبب الخصم');return null}
  const a=$('#'+p+'at').value;return{id:uid(),patientId:pid,at:a?new Date(a).toISOString():nowISO(),createdAt:nowISO(),by:ME.name,service:sname,qty,unit,fee,discType:dAmt>0?$('#'+p+'dt').value:'',discVal:dAmt>0?val(p+'dv'):0,discAmt:dAmt,discReason:dAmt>0?dr:'',discApprovedBy:'',net:r2(fee-dAmt),note:$('#'+p+'note').value.trim(),followId:'',void:false,...(pkOn(p)?{stay:true,days:qty,pkg:fee}:{})}}
-function readPay(p,pid){const a=r2(val(p+'pa'));if(a<=0)return null;const m=$('#'+p+'pm').value,cash=m==='كاش',txn=cash?'':$('#'+p+'txn').value.trim();
+function readPay(p,pid){const a=r2(val(p+'pa'));if(a<=0)return null;const rv=$('#'+p+'rcv');if(rv&&!rv.value.trim()){alert('اكتب اسم المستلم');return false}if(rv)SafeStore.setItem('masar_rcv',rv.value.trim());const m=$('#'+p+'pm').value,cash=m==='كاش',txn=cash?'':$('#'+p+'txn').value.trim();
  if(!cash&&!txn){alert('اكتب رقم العملية / المرجع للدفع غير النقدي');return false}
- const pe=$('#'+p+'pat'),note=$('#'+p+'pnote');return{id:uid(),receiptNo:'',patientId:pid,amount:a,method:m,bank:cash?'':$('#'+p+'bank').value.trim(),txn,at:pe&&pe.value?new Date(pe.value).toISOString():nowISO(),createdAt:nowISO(),by:ME.name,receiver:($('#'+p+'rcv')||{}).value||ME.name,note:note?note.value.trim():'',void:false,...($('#'+p+'for')?{for:$('#'+p+'for').value}:{})}}
+ const pe=$('#'+p+'pat'),note=$('#'+p+'pnote');return{id:uid(),receiptNo:'',patientId:pid,amount:a,method:m,bank:cash?'':$('#'+p+'bank').value.trim(),txn,at:pe&&pe.value?new Date(pe.value).toISOString():nowISO(),createdAt:nowISO(),by:ME.name,receiver:(($('#'+p+'rcv')||{}).value||'').trim()||ME.name,note:note?note.value.trim():'',void:false,...($('#'+p+'for')?{for:$('#'+p+'for').value}:{})}}
 function overpayOK(pay,due){return!pay||pay.amount<=due+0.001||confirm(`المبلغ المدفوع (${money(pay.amount)}) أكبر من المتبقي (${money(due)}).\nسيُسجّل الفرق كرصيد مقدّم للمريض. متابعة؟`)}
 async function commitPay(pay){pay.receiptNo='R-'+String(await nextNo('receipt')).padStart(6,'0');DB.payments.push(pay);mark('payments',pay,'new');log('تسجيل دفعة',`إيصال ${pay.receiptNo} | ملف ${fileOf(pay.patientId)} | ${money(pay.amount)} | ${pay.method}${pay.txn?' | مرجع '+pay.txn:''} | المستلم: ${pay.receiver}`)}
 function commitCharge(ch,P){DB.charges.push(ch);mark('charges',ch,'new');log('إضافة زيارة / خدمة',`ملف ${P.fileNo} ${P.name} | ${ch.service} | ${money(ch.fee)}${ch.discAmt?` | خصم ${money(ch.discAmt)} (${ch.discReason}) بموافقة ${ch.discApprovedBy}`:''}`)}
