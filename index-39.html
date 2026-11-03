@@ -231,24 +231,24 @@ async function afterAuth(user){busy(true);try{const {data,error}=await sb.from('
 function enter(){callInit();$('#login').style.display='none';$('#app').style.display='flex';lastAct=Date.now();VIEW=ME.role==='doctor'?'patients':'reception';ARG=null;render()}
 async function logout(auto){if(ME){log(auto?'خروج تلقائي لعدم النشاط':'تسجيل خروج','');await commit(true);if(myPending().length&&!auto&&!confirm('فيه عمليات لسه ما اترفعتش (مفيش نت). هتفضل محفوظة على الجهاز وتترفع لما نفس المستخدم يدخل تاني والنت يرجع.\nخروج؟'))return}ME=null;callStop();updatePend();try{await sb.auth.signOut()}catch(e){}showLogin()}
 /* ===== استدعاء (زرار للمكتب) ===== */
-let CALLCH=null,CALLOK=false,ACTX=null,BEEP=null,CUR=null;
+let CALLCH=null,CALLOK=false,ACTX=null,BEEP=null,CUR=null;const DEVID=(()=>{let d=SafeStore.getItem('masar_dev');if(!d){d=uid();SafeStore.setItem('masar_dev',d)}return d})();
 addEventListener('click',()=>{try{if(!ACTX)ACTX=new (window.AudioContext||window.webkitAudioContext)();if(ACTX.state==='suspended')ACTX.resume()}catch(e){}},{passive:true});
 function callInit(){try{if(CALLCH||!sb.channel)return;CALLCH=sb.channel('masar-call',{config:{broadcast:{self:false}}});
  CALLCH.on('broadcast',{event:'call'},m=>onCall(m.payload)).on('broadcast',{event:'ack'},m=>onAck(m.payload)).subscribe(s=>{CALLOK=s==='SUBSCRIBED';if(s==='CHANNEL_ERROR'||s==='TIMED_OUT'||s==='CLOSED'){CALLOK=false;try{sb.removeChannel(CALLCH)}catch(e){}CALLCH=null;setTimeout(()=>{if(ME)callInit()},5000)}})}catch(e){CALLCH=null}}
 function callStop(){try{if(CALLCH)sb.removeChannel(CALLCH)}catch(e){}CALLCH=null;CALLOK=false;stopBeep();$('#callBox').style.display='none'}
 function mCall(){const U=(DB.users||[]).filter(u=>u.active!==false&&u.id!==ME.id);
- modal(`<h2>🔔 استدعاء</h2><label>مين؟</label><select id="clTo"><option value="reception">كل أجهزة الاستقبال</option>${U.map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLES[u.role]||u.role})</option>`).join('')}<option value="all">كل الأجهزة</option></select>
+ modal(`<h2>🔔 استدعاء <span class="tag" style="background:${CALLOK?'#e8f5ee':'#fdecea'};color:${CALLOK?'#14804f':'#c0392b'}">${CALLOK?'🟢 متصل':'🔴 مش متصل'}</span></h2><label>مين؟</label><select id="clTo"><option value="all">كل الأجهزة التانية المفتوح عليها البرنامج</option><option value="reception">أجهزة الاستقبال بس</option>${U.map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLES[u.role]||u.role})</option>`).join('')}</select>
  <label style="margin-top:10px">رسالة (اختياري)</label><input id="clMsg" placeholder="مثال: هاتي ملف المريض معاكي">
  <div class="row callBtns" style="margin-top:14px"><button class="btn" style="background:#d62828" onclick="sendCall('red')">🔴 تعالي المكتب حالاً</button><button class="btn" style="background:#f2b705;color:#000" onclick="sendCall('yellow')">🟡 تعالي لما تفضي</button></div>
  <p class="hint" style="margin-top:10px">الشاشة عندها هتنوّر باللون وتعمل صوت لحد ما تدوس «جاية».</p><div class="row"><button class="btn sec" onclick="closeModal()">إلغاء</button></div>`)}
 function sendCall(color){if(!CALLCH||!CALLOK){callInit();return alert('الاتصال لسه بيتجهز… جرّب تاني بعد ثواني.')}
- const p={id:uid(),from:ME.name,fromId:ME.id,to:$('#clTo').value,color,msg:$('#clMsg').value.trim(),at:nowISO()};
+ const p={id:uid(),from:ME.name,fromId:ME.id,fromDev:DEVID,to:$('#clTo').value,color,msg:$('#clMsg').value.trim(),at:nowISO()};
  CALLCH.send({type:'broadcast',event:'call',payload:p});closeModal();toast('🔔 اتبعت — مستني الرد')}
-function callMine(p){return p.fromId!==ME.id&&(p.to==='all'||p.to===ME.id||(p.to==='reception'&&ME.role==='reception'))}
+function callMine(p){return(p.fromDev?p.fromDev!==DEVID:p.fromId!==ME.id)&&(p.to==='all'||p.to===ME.id||(p.to==='reception'&&ME.role==='reception'))}
 function onCall(p){if(!ME||!p||!callMine(p))return;CUR=p;const b=$('#callBox');b.className=p.color==='yellow'?'yellow':'red';
  b.innerHTML=`<div class="t">🔔 ${esc(p.from)} ${p.color==='yellow'?'عايزك لما تفضي':'عايزك في المكتب حالاً'}</div>${p.msg?`<div class="m">${esc(p.msg)}</div>`:''}<button onclick="ackCall()">✓ جاية</button>`;b.style.display='flex';startBeep(p.color);try{navigator.vibrate&&navigator.vibrate([400,200,400,200,400])}catch(e){}}
-function ackCall(){const p=CUR;CUR=null;stopBeep();$('#callBox').style.display='none';if(p&&CALLCH)try{CALLCH.send({type:'broadcast',event:'ack',payload:{id:p.id,by:ME.name,toId:p.fromId}})}catch(e){}}
-function onAck(p){if(!ME||!p||p.toId!==ME.id)return;toast(`✓ ${p.by} جاية`);try{beepOnce(880,.25)}catch(e){}}
+function ackCall(){const p=CUR;CUR=null;stopBeep();$('#callBox').style.display='none';if(p&&CALLCH)try{CALLCH.send({type:'broadcast',event:'ack',payload:{id:p.id,by:ME.name,toId:p.fromId,toDev:p.fromDev}})}catch(e){}}
+function onAck(p){if(!ME||!p||(p.toDev?p.toDev!==DEVID:p.toId!==ME.id))return;toast(`✓ ${p.by} جاية`);try{beepOnce(880,.25)}catch(e){}}
 function beepOnce(f,d){if(!ACTX)return;const o=ACTX.createOscillator(),g=ACTX.createGain();o.frequency.value=f;o.type='square';g.gain.value=.2;o.connect(g);g.connect(ACTX.destination);o.start();o.stop(ACTX.currentTime+d)}
 function startBeep(c){stopBeep();const go=()=>{try{beepOnce(c==='yellow'?660:990,.35);setTimeout(()=>{try{beepOnce(c==='yellow'?520:740,.35)}catch(e){}},420)}catch(e){}};go();BEEP=setInterval(go,c==='yellow'?3000:1500)}
 function stopBeep(){if(BEEP)clearInterval(BEEP);BEEP=null}
