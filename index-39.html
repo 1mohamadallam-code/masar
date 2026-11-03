@@ -82,6 +82,14 @@ th{color:#000;font-weight:700}td{color:#000}
 .stat span{color:#000;font-weight:700;font-size:13px}
 #nav button{font-weight:700}
 tr.void td{color:#7b8591}}
+
+#callBox{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;flex-direction:column;gap:18px;text-align:center;padding:20px;animation:cbFlash 1s infinite}
+#callBox.red{--c1:#d62828;--c2:#ff6b6b}#callBox.yellow{--c1:#f2b705;--c2:#ffe066}
+@keyframes cbFlash{0%,100%{background:var(--c1)}50%{background:var(--c2)}}
+#callBox .t{font-size:44px;font-weight:800;color:#000;background:#fff;border-radius:18px;padding:18px 26px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+#callBox .m{font-size:30px;font-weight:800;color:#000;background:#fff;border-radius:14px;padding:10px 20px}
+#callBox button{font-size:30px;font-weight:800;padding:14px 40px;border-radius:14px;border:0;background:#111;color:#fff;cursor:pointer}
+.callBtns button{font-size:20px;padding:14px;flex:1;min-width:200px}
 </style>
 </head>
 <body>
@@ -93,7 +101,7 @@ tr.void td{color:#7b8591}}
 <div class="modal" id="modal1"><div class="box"></div></div>
 <div class="modal" id="modal2"><div class="box"></div></div>
 <div id="busy"><div>⏳ جاري الاتصال...</div></div>
-<div id="toast"></div>
+<div id="toast"></div><div id="callBox"></div>
 <div id="pendBar"></div>
 <div id="printArea"></div>
 <script type="text/plain" id="sqlSetup">
@@ -220,8 +228,30 @@ async function afterAuth(user){busy(true);try{const {data,error}=await sb.from('
   if(!data||!data.active){await sb.auth.signOut();alert('هذا الحساب غير مفعّل. راجع الإدارة.');return false}
   ME={id:data.id,name:data.name,role:data.role,docId:data.doc_id,username:data.username};await loadAll();enter();if(myPending().length)flush(false);updatePend();return true}
  catch(e){alert('خطأ في الاتصال: '+errMsg(e));ME=null;return false}finally{busy(false)}}
-function enter(){$('#login').style.display='none';$('#app').style.display='flex';lastAct=Date.now();VIEW=ME.role==='doctor'?'patients':'reception';ARG=null;render()}
-async function logout(auto){if(ME){log(auto?'خروج تلقائي لعدم النشاط':'تسجيل خروج','');await commit(true);if(myPending().length&&!auto&&!confirm('فيه عمليات لسه ما اترفعتش (مفيش نت). هتفضل محفوظة على الجهاز وتترفع لما نفس المستخدم يدخل تاني والنت يرجع.\nخروج؟'))return}ME=null;updatePend();try{await sb.auth.signOut()}catch(e){}showLogin()}
+function enter(){callInit();$('#login').style.display='none';$('#app').style.display='flex';lastAct=Date.now();VIEW=ME.role==='doctor'?'patients':'reception';ARG=null;render()}
+async function logout(auto){if(ME){log(auto?'خروج تلقائي لعدم النشاط':'تسجيل خروج','');await commit(true);if(myPending().length&&!auto&&!confirm('فيه عمليات لسه ما اترفعتش (مفيش نت). هتفضل محفوظة على الجهاز وتترفع لما نفس المستخدم يدخل تاني والنت يرجع.\nخروج؟'))return}ME=null;callStop();updatePend();try{await sb.auth.signOut()}catch(e){}showLogin()}
+/* ===== استدعاء (زرار للمكتب) ===== */
+let CALLCH=null,CALLOK=false,ACTX=null,BEEP=null,CUR=null;
+addEventListener('click',()=>{try{if(!ACTX)ACTX=new (window.AudioContext||window.webkitAudioContext)();if(ACTX.state==='suspended')ACTX.resume()}catch(e){}},{passive:true});
+function callInit(){try{if(CALLCH||!sb.channel)return;CALLCH=sb.channel('masar-call',{config:{broadcast:{self:false}}});
+ CALLCH.on('broadcast',{event:'call'},m=>onCall(m.payload)).on('broadcast',{event:'ack'},m=>onAck(m.payload)).subscribe(s=>{CALLOK=s==='SUBSCRIBED';if(s==='CHANNEL_ERROR'||s==='TIMED_OUT'||s==='CLOSED'){CALLOK=false;try{sb.removeChannel(CALLCH)}catch(e){}CALLCH=null;setTimeout(()=>{if(ME)callInit()},5000)}})}catch(e){CALLCH=null}}
+function callStop(){try{if(CALLCH)sb.removeChannel(CALLCH)}catch(e){}CALLCH=null;CALLOK=false;stopBeep();$('#callBox').style.display='none'}
+function mCall(){const U=(DB.users||[]).filter(u=>u.active!==false&&u.id!==ME.id);
+ modal(`<h2>🔔 استدعاء</h2><label>مين؟</label><select id="clTo"><option value="reception">كل أجهزة الاستقبال</option>${U.map(u=>`<option value="${u.id}">${esc(u.name)} (${ROLES[u.role]||u.role})</option>`).join('')}<option value="all">كل الأجهزة</option></select>
+ <label style="margin-top:10px">رسالة (اختياري)</label><input id="clMsg" placeholder="مثال: هاتي ملف المريض معاكي">
+ <div class="row callBtns" style="margin-top:14px"><button class="btn" style="background:#d62828" onclick="sendCall('red')">🔴 تعالي المكتب حالاً</button><button class="btn" style="background:#f2b705;color:#000" onclick="sendCall('yellow')">🟡 تعالي لما تفضي</button></div>
+ <p class="hint" style="margin-top:10px">الشاشة عندها هتنوّر باللون وتعمل صوت لحد ما تدوس «جاية».</p><div class="row"><button class="btn sec" onclick="closeModal()">إلغاء</button></div>`)}
+function sendCall(color){if(!CALLCH||!CALLOK){callInit();return alert('الاتصال لسه بيتجهز… جرّب تاني بعد ثواني.')}
+ const p={id:uid(),from:ME.name,fromId:ME.id,to:$('#clTo').value,color,msg:$('#clMsg').value.trim(),at:nowISO()};
+ CALLCH.send({type:'broadcast',event:'call',payload:p});closeModal();toast('🔔 اتبعت — مستني الرد')}
+function callMine(p){return p.fromId!==ME.id&&(p.to==='all'||p.to===ME.id||(p.to==='reception'&&ME.role==='reception'))}
+function onCall(p){if(!ME||!p||!callMine(p))return;CUR=p;const b=$('#callBox');b.className=p.color==='yellow'?'yellow':'red';
+ b.innerHTML=`<div class="t">🔔 ${esc(p.from)} ${p.color==='yellow'?'عايزك لما تفضي':'عايزك في المكتب حالاً'}</div>${p.msg?`<div class="m">${esc(p.msg)}</div>`:''}<button onclick="ackCall()">✓ جاية</button>`;b.style.display='flex';startBeep(p.color);try{navigator.vibrate&&navigator.vibrate([400,200,400,200,400])}catch(e){}}
+function ackCall(){const p=CUR;CUR=null;stopBeep();$('#callBox').style.display='none';if(p&&CALLCH)try{CALLCH.send({type:'broadcast',event:'ack',payload:{id:p.id,by:ME.name,toId:p.fromId}})}catch(e){}}
+function onAck(p){if(!ME||!p||p.toId!==ME.id)return;toast(`✓ ${p.by} جاية`);try{beepOnce(880,.25)}catch(e){}}
+function beepOnce(f,d){if(!ACTX)return;const o=ACTX.createOscillator(),g=ACTX.createGain();o.frequency.value=f;o.type='square';g.gain.value=.2;o.connect(g);g.connect(ACTX.destination);o.start();o.stop(ACTX.currentTime+d)}
+function startBeep(c){stopBeep();const go=()=>{try{beepOnce(c==='yellow'?660:990,.35);setTimeout(()=>{try{beepOnce(c==='yellow'?520:740,.35)}catch(e){}},420)}catch(e){}};go();BEEP=setInterval(go,c==='yellow'?3000:1500)}
+function stopBeep(){if(BEEP)clearInterval(BEEP);BEEP=null}
 async function refresh(){if(!ME)return;busy(true);try{await loadAll();render();toast('تم التحديث ✓')}catch(e){alert('تعذّر التحديث: '+errMsg(e))}finally{busy(false)}}
 ['click','keydown','touchstart','mousemove'].forEach(e=>addEventListener(e,()=>lastAct=Date.now(),{passive:true}));
 setInterval(()=>{if(ME&&ME.role!=='reception'&&Date.now()-lastAct>Math.max(60,+DB.settings.idleMin||120)*60000)logout(true)},15000);
@@ -244,7 +274,7 @@ function render(){FORM_TOUCHED=false;
  const ok=tabs.filter(t=>t[3]).map(t=>t[0]).concat('file');if(!ok.includes(VIEW))VIEW='patients';
  $('#nav').innerHTML=tabs.filter(t=>t[3]).map(t=>`<button class="${VIEW===t[0]||(VIEW==='file'&&t[0]==='patients')?'on':''}" onclick="go('${t[0]}')"><span>${t[1]}</span>${t[2]}${SECOF[t[0]]&&!unlocked(SECOF[t[0]])?' 🔐':''}</button>`).join('');
  $('#sideLogo').outerHTML=logoHTML('للطب النفسي وعلاج الإدمان',true).replace('class="logo"','class="logo" id="sideLogo"');
- $('#who').innerHTML=`<div><span class="nm">${esc(ME.name)}</span> <span class="tag">${ROLES[ME.role]}</span></div><div class="row"><button class="btn sec sm" onclick="refresh()">↻ تحديث</button><button class="btn sec sm" onclick="myPw()">كلمة المرور</button><button class="btn sec sm" onclick="logout()">خروج</button></div><div class="zm">حجم الشاشة: <button class="btn sec sm" onclick="zoomBy(-0.1)">A−</button><button class="btn sec sm" onclick="zoomBy(0.1)">A+</button></div>`;
+ $('#who').innerHTML=`<div><span class="nm">${esc(ME.name)}</span> <span class="tag">${ROLES[ME.role]}</span></div><div class="row"><button class="btn sec sm" onclick="refresh()">↻ تحديث</button>${ME.role!=='reception'?`<button class="btn sm" style="background:#d62828" onclick="mCall()">🔔 استدعاء</button>`:''}<button class="btn sec sm" onclick="myPw()">كلمة المرور</button><button class="btn sec sm" onclick="logout()">خروج</button></div><div class="zm">حجم الشاشة: <button class="btn sec sm" onclick="zoomBy(-0.1)">A−</button><button class="btn sec sm" onclick="zoomBy(0.1)">A+</button></div>`;
  const V={reception:vReception,patients:vPatients,file:vFile,report:vReport,expenses:vExp,settings:vSettings,audit:vAudit,backup:vBackup}[VIEW];
  $('#main').innerHTML=backupWarn()+V(ARG);if(VIEW==='reception')calc('n')}
 function askUnlock(s,cb){modal(`<h2>🔐 ${SECS[s]}</h2><p class="hint">اكتب كلمة سر ${SECS[s]}.</p><input type="password" id="ulP" onkeydown="if(event.key==='Enter')$('#ulOk').click()"><div class="row" style="margin-top:12px"><button class="btn" id="ulOk">فتح</button><button class="btn sec" onclick="closeModal(2)">إلغاء</button></div>`,2);
