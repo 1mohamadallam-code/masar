@@ -263,6 +263,12 @@ setInterval(async()=>{if(!ME||BUSY||document.hidden||VIEW==='reception')return;i
 let FORM_TOUCHED=false,SYNCING=false;
 document.addEventListener('input',e=>{if(e.target&&e.target.closest&&e.target.closest('#main'))FORM_TOUCHED=true},true);
 const dbSig=()=>{try{return JSON.stringify([DB.patients,DB.charges,DB.payments,DB.wallet,DB.med,DB.doctors,DB.settings,DB.users,DB.fin,DB.comm])}catch(e){return Math.random()+''}};
+/* ===== تحديث تلقائي للنسخة ===== */
+const APPVER='20261109181125',VERF='index-39.ver.json';
+async function verCheck(){try{if(APPVER.startsWith('__')||document.hidden)return;if([1,2].some(i=>{const m=document.getElementById('modal'+i);return m&&m.style.display==='flex'}))return;if(typeof FORM_TOUCHED!=='undefined'&&FORM_TOUCHED)return;if(typeof DIRTY!=='undefined'&&DIRTY.length)return;
+ const r=await fetch(VERF+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const j=await r.json();if(!j.v||j.v===APPVER)return;const k='masar-ver-tried';let t='';try{t=sessionStorage.getItem(k)}catch(e){}if(t===j.v)return;try{sessionStorage.setItem(k,j.v)}catch(e){}
+ location.replace(location.pathname+'?v='+j.v)}catch(e){}}
+setTimeout(verCheck,4000);setInterval(verCheck,3*60*1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(verCheck,800)});
 async function autoSync(){if(!ME||SYNCING||BUSY||DIRTY.length||AQ.length||document.hidden||FORM_TOUCHED)return;
  if([...document.querySelectorAll('.modal')].some(m=>m.style.display==='flex'))return;if($('#app').style.display==='none')return;
  const ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;

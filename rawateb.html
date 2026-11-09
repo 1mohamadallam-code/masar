@@ -310,6 +310,12 @@ function mDetails(eid){const e=emp(eid),c=calc(e,MONTH),s=c.slip;const items=[..
 
 /* ===== مزامنة تلقائية بين الأجهزة ===== */
 let SYNCING=false;
+/* ===== تحديث تلقائي للنسخة ===== */
+const APPVER='20261109181125',VERF='rawateb.ver.json';
+async function verCheck(){try{if(APPVER.startsWith('__')||document.hidden)return;if([1,2].some(i=>{const m=document.getElementById('modal'+i);return m&&m.style.display==='flex'}))return;if(typeof FORM_TOUCHED!=='undefined'&&FORM_TOUCHED)return;if(typeof DIRTY!=='undefined'&&DIRTY.length)return;
+ const r=await fetch(VERF+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const j=await r.json();if(!j.v||j.v===APPVER)return;const k='masar-ver-tried';let t='';try{t=sessionStorage.getItem(k)}catch(e){}if(t===j.v)return;try{sessionStorage.setItem(k,j.v)}catch(e){}
+ location.replace(location.pathname+'?v='+j.v)}catch(e){}}
+setTimeout(verCheck,4000);setInterval(verCheck,3*60*1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(verCheck,800)});
 async function autoSync(){if(!ME||SYNCING||BUSY||STEPB||document.hidden)return;if($('#app').style.display==='none'||$('#modal1').style.display==='flex')return;
  const ae=document.activeElement;if(ae&&/^(TEXTAREA|SELECT)$/.test(ae.tagName))return;
  SYNCING=true;const before=JSON.stringify([FIN,SET]);try{await loadAll()}catch(e){SYNCING=false;return}SYNCING=false;
