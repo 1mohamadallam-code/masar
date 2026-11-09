@@ -252,11 +252,11 @@ function onAck(p){if(!ME||!p||(p.toDev?p.toDev!==DEVID:p.toId!==ME.id))return;to
 function beepOnce(f,d){if(!ACTX)return;const o=ACTX.createOscillator(),g=ACTX.createGain();o.frequency.value=f;o.type='square';g.gain.value=.2;o.connect(g);g.connect(ACTX.destination);o.start();o.stop(ACTX.currentTime+d)}
 function startBeep(c){stopBeep();const go=()=>{try{beepOnce(c==='yellow'?660:990,.35);setTimeout(()=>{try{beepOnce(c==='yellow'?520:740,.35)}catch(e){}},420)}catch(e){}};go();BEEP=setInterval(go,c==='yellow'?3000:1500)}
 function stopBeep(){if(BEEP)clearInterval(BEEP);BEEP=null}
-/* من 1 نوفمبر 2026: كل البنود جوه الخزنة (التحاليل والكشف الباطني وأمانة المجلس) */
-async function migrateExt(){try{if(!ME||ME.role!=='admin'||BUSY||DIRTY.length)return;const F='2026-10-31T22:00:00.000Z';
+/* من 1 أكتوبر 2026: كل البنود جوه الخزنة (التحاليل والكشف الباطني وأمانة المجلس) */
+async function migrateExt(){try{if(!ME||ME.role!=='admin'||BUSY||DIRTY.length)return;const F='2026-09-30T22:00:00.000Z';
  const C=DB.charges.filter(c=>!c.void&&(c.grp==='ext'||c.ext)&&(c.at||'')>=F),Y=DB.payments.filter(p=>!p.void&&p.for==='ext'&&(p.at||'')>=F);if(!C.length&&!Y.length)return;
  C.forEach(c=>{c.grp='other';delete c.ext;mark('charges',c,'up')});Y.forEach(p=>{p.for='other';mark('payments',p,'up')});
- log('تحويل للخزنة',`من 1 نوفمبر: ${C.length} بند و ${Y.length} دفعة كانوا «خارج الخزنة» بقوا جوه الخزنة (${money(Y.reduce((s,p)=>s+p.amount,0))})`);if(await commit(true)){toast(`✓ ${Y.length} دفعة اتحولت لجوه الخزنة`);render()}}catch(e){}}
+ log('تحويل للخزنة',`من 1 أكتوبر: ${C.length} بند و ${Y.length} دفعة كانوا «خارج الخزنة» بقوا جوه الخزنة (${money(Y.reduce((s,p)=>s+p.amount,0))})`);if(await commit(true)){toast(`✓ ${Y.length} دفعة اتحولت لجوه الخزنة`);render()}}catch(e){}}
 async function refresh(){if(!ME)return;busy(true);try{await loadAll();render();toast('تم التحديث ✓')}catch(e){alert('تعذّر التحديث: '+errMsg(e))}finally{busy(false)}}
 ['click','keydown','touchstart','mousemove'].forEach(e=>addEventListener(e,()=>lastAct=Date.now(),{passive:true}));
 setInterval(()=>{if(ME&&ME.role!=='reception'&&Date.now()-lastAct>Math.max(60,+DB.settings.idleMin||120)*60000)logout(true)},15000);
@@ -269,7 +269,7 @@ let FORM_TOUCHED=false,SYNCING=false;
 document.addEventListener('input',e=>{if(e.target&&e.target.closest&&e.target.closest('#main'))FORM_TOUCHED=true},true);
 const dbSig=()=>{try{return JSON.stringify([DB.patients,DB.charges,DB.payments,DB.wallet,DB.med,DB.doctors,DB.settings,DB.users,DB.fin,DB.comm])}catch(e){return Math.random()+''}};
 /* ===== تحديث تلقائي للنسخة ===== */
-const APPVER='20261109225528',VERF='index-39.ver.json';
+const APPVER='20261109230846',VERF='index-39.ver.json';
 async function verCheck(){try{if(APPVER.startsWith('__')||document.hidden)return;if([1,2].some(i=>{const m=document.getElementById('modal'+i);return m&&m.style.display==='flex'}))return;if(typeof FORM_TOUCHED!=='undefined'&&FORM_TOUCHED)return;if(typeof DIRTY!=='undefined'&&DIRTY.length)return;
  const r=await fetch(VERF+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const j=await r.json();if(!j.v||j.v===APPVER)return;const k='masar-ver-tried';let t='';try{t=sessionStorage.getItem(k)}catch(e){}if(t===j.v)return;try{sessionStorage.setItem(k,j.v)}catch(e){}
  location.replace(location.pathname+'?v='+j.v)}catch(e){}}
