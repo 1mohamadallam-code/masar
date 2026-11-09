@@ -228,7 +228,7 @@ async function afterAuth(user){busy(true);try{const {data,error}=await sb.from('
   if(!data||!data.active){await sb.auth.signOut();alert('هذا الحساب غير مفعّل. راجع الإدارة.');return false}
   ME={id:data.id,name:data.name,role:data.role,docId:data.doc_id,username:data.username};await loadAll();enter();if(myPending().length)flush(false);updatePend();return true}
  catch(e){alert('خطأ في الاتصال: '+errMsg(e));ME=null;return false}finally{busy(false)}}
-function enter(){callInit();$('#login').style.display='none';$('#app').style.display='flex';lastAct=Date.now();VIEW=ME.role==='doctor'?'patients':'reception';ARG=null;render()}
+function enter(){callInit();if(ME.role==='admin')setTimeout(migrateExt,2500);$('#login').style.display='none';$('#app').style.display='flex';lastAct=Date.now();VIEW=ME.role==='doctor'?'patients':'reception';ARG=null;render()}
 async function logout(auto){if(ME){log(auto?'خروج تلقائي لعدم النشاط':'تسجيل خروج','');await commit(true);if(myPending().length&&!auto&&!confirm('فيه عمليات لسه ما اترفعتش (مفيش نت). هتفضل محفوظة على الجهاز وتترفع لما نفس المستخدم يدخل تاني والنت يرجع.\nخروج؟'))return}ME=null;callStop();updatePend();try{await sb.auth.signOut()}catch(e){}showLogin()}
 /* ===== استدعاء (زرار للمكتب) ===== */
 let CALLCH=null,CALLOK=false,ACTX=null,BEEP=null,CUR=null;const DEVID=(()=>{let d=SafeStore.getItem('masar_dev');if(!d){d=uid();SafeStore.setItem('masar_dev',d)}return d})();
@@ -252,6 +252,11 @@ function onAck(p){if(!ME||!p||(p.toDev?p.toDev!==DEVID:p.toId!==ME.id))return;to
 function beepOnce(f,d){if(!ACTX)return;const o=ACTX.createOscillator(),g=ACTX.createGain();o.frequency.value=f;o.type='square';g.gain.value=.2;o.connect(g);g.connect(ACTX.destination);o.start();o.stop(ACTX.currentTime+d)}
 function startBeep(c){stopBeep();const go=()=>{try{beepOnce(c==='yellow'?660:990,.35);setTimeout(()=>{try{beepOnce(c==='yellow'?520:740,.35)}catch(e){}},420)}catch(e){}};go();BEEP=setInterval(go,c==='yellow'?3000:1500)}
 function stopBeep(){if(BEEP)clearInterval(BEEP);BEEP=null}
+/* من 1 نوفمبر 2026: كل البنود جوه الخزنة (التحاليل والكشف الباطني وأمانة المجلس) */
+async function migrateExt(){try{if(!ME||ME.role!=='admin'||BUSY||DIRTY.length)return;const F='2026-10-31T22:00:00.000Z';
+ const C=DB.charges.filter(c=>!c.void&&(c.grp==='ext'||c.ext)&&(c.at||'')>=F),Y=DB.payments.filter(p=>!p.void&&p.for==='ext'&&(p.at||'')>=F);if(!C.length&&!Y.length)return;
+ C.forEach(c=>{c.grp='other';delete c.ext;mark('charges',c,'up')});Y.forEach(p=>{p.for='other';mark('payments',p,'up')});
+ log('تحويل للخزنة',`من 1 نوفمبر: ${C.length} بند و ${Y.length} دفعة كانوا «خارج الخزنة» بقوا جوه الخزنة (${money(Y.reduce((s,p)=>s+p.amount,0))})`);if(await commit(true)){toast(`✓ ${Y.length} دفعة اتحولت لجوه الخزنة`);render()}}catch(e){}}
 async function refresh(){if(!ME)return;busy(true);try{await loadAll();render();toast('تم التحديث ✓')}catch(e){alert('تعذّر التحديث: '+errMsg(e))}finally{busy(false)}}
 ['click','keydown','touchstart','mousemove'].forEach(e=>addEventListener(e,()=>lastAct=Date.now(),{passive:true}));
 setInterval(()=>{if(ME&&ME.role!=='reception'&&Date.now()-lastAct>Math.max(60,+DB.settings.idleMin||120)*60000)logout(true)},15000);
@@ -264,7 +269,7 @@ let FORM_TOUCHED=false,SYNCING=false;
 document.addEventListener('input',e=>{if(e.target&&e.target.closest&&e.target.closest('#main'))FORM_TOUCHED=true},true);
 const dbSig=()=>{try{return JSON.stringify([DB.patients,DB.charges,DB.payments,DB.wallet,DB.med,DB.doctors,DB.settings,DB.users,DB.fin,DB.comm])}catch(e){return Math.random()+''}};
 /* ===== تحديث تلقائي للنسخة ===== */
-const APPVER='20261109181125',VERF='index-39.ver.json';
+const APPVER='20261109225528',VERF='index-39.ver.json';
 async function verCheck(){try{if(APPVER.startsWith('__')||document.hidden)return;if([1,2].some(i=>{const m=document.getElementById('modal'+i);return m&&m.style.display==='flex'}))return;if(typeof FORM_TOUCHED!=='undefined'&&FORM_TOUCHED)return;if(typeof DIRTY!=='undefined'&&DIRTY.length)return;
  const r=await fetch(VERF+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const j=await r.json();if(!j.v||j.v===APPVER)return;const k='masar-ver-tried';let t='';try{t=sessionStorage.getItem(k)}catch(e){}if(t===j.v)return;try{sessionStorage.setItem(k,j.v)}catch(e){}
  location.replace(location.pathname+'?v='+j.v)}catch(e){}}
@@ -337,7 +342,7 @@ function rcvLast(){const l=SafeStore.getItem('masar_rcv');return l||rcvList()[0]
 function rcvOpts(){const L=rcvList(),last=SafeStore.getItem('masar_rcv'),sel=L.includes(last)?last:L[0];return L.map(n=>`<option ${n===sel?'selected':''}>${esc(n)}</option>`).join('')}
 const rcvOf=p=>p.receiver||p.by;
 function refToggle(p){const show=$('#'+p+'pm').value!=='كاش';document.querySelectorAll('.'+p+'ref').forEach(e=>e.style.display=show?'':'none')}
-const PRE=[{v:'b_wash',n:'غسيل ملابس',i:'🧺',g:'wash'},{v:'b_lab',n:'تحاليل',i:'🧪',g:'ext'},{v:'b_majlis',n:'أمانة المجلس',i:'🏛️',g:'ext',p:150},{v:'b_batni',n:'كشف باطني',i:'🩺',g:'ext'}];
+const PRE=[{v:'b_wash',n:'غسيل ملابس',i:'🧺',g:'wash'},{v:'b_lab',n:'تحاليل',i:'🧪',g:'other'},{v:'b_majlis',n:'أمانة المجلس',i:'🏛️',g:'other',p:150},{v:'b_batni',n:'كشف باطني',i:'🩺',g:'other'}];
 function svcPick(p){const i=$('#'+p+'svc').value,x=PRE.find(y=>y.v===i);if(x){$('#'+p+'cw').style.display='none';const g=$('#'+p+'grp');if(g)g.value=x.g;$('#'+p+'fee').value=x.p||'';setTimeout(()=>$('#'+p+'fee').focus(),30);return calc(p)}$('#'+p+'cw').style.display=i==='custom'?'':'none';if(i==='custom')setTimeout(()=>$('#'+p+'cname').focus(),30);else if(i!==''){const pr=DB.settings.services[i].price;if(pr>0)$('#'+p+'fee').value=pr;const g=$('#'+p+'grp');if(g)g.value=/غسيل/.test(DB.settings.services[i].name)?'wash':'other'}calc(p)}
 function payNow(p){const f=feeOf(p),n=r2(f-discOf(p,f));if(!(n>0))return alert('اكتب السعر الأول');$('#'+p+'pa').value=n;const m=$('#'+p+'pm');if(m){m.value='كاش';refToggle(p)}calc(p)}
 function qtyOf(p){const q=val(p+'qty');return q>0?q:1}
@@ -649,7 +654,7 @@ function printStatement(pid){const P=pat(pid),b=bal(pid);doPrint(`<div class="rc
 
 /* ===== المصروفات والشركاء ===== */
 const WD='سحب / توزيع أرباح على الشركاء';
-const XCATS=['مشتريات','أدوية ومستلزمات طبية','أكل ومشروبات','إيجار','رواتب','كهرباء ومياه وغاز','إنترنت وتليفونات','صيانة','مواصلات','غسيل ومنظفات','أخرى',WD];
+const XCATS=['مشتريات','أدوية ومستلزمات طبية','أكل ومشروبات','إيجار','رواتب','كهرباء ومياه وغاز','إنترنت وتليفونات','صيانة','مواصلات','غسيل ومنظفات','تحاليل وكشوفات خارجية','أمانة المجلس','أخرى',WD];
 function exps(){return DB.fin.filter(x=>x.kind==='exp'&&!x.void)}
 const DEF_PARTNERS=[{name:'فراج',pct:33.33},{name:'علام',pct:33.33},{name:'رزق',pct:33.33}];
 function partners(){const p=DB.fin.find(x=>x.id==='partners');return p&&p.list&&p.list.length?p.list:DEF_PARTNERS}
