@@ -257,6 +257,48 @@ async function migrateExt(){try{if(!ME||ME.role!=='admin'||BUSY||DIRTY.length)re
  const C=DB.charges.filter(c=>!c.void&&(c.grp==='ext'||c.ext)&&(c.at||'')>=F),Y=DB.payments.filter(p=>!p.void&&p.for==='ext'&&(p.at||'')>=F);if(!C.length&&!Y.length)return;
  C.forEach(c=>{c.grp='other';delete c.ext;mark('charges',c,'up')});Y.forEach(p=>{p.for='other';mark('payments',p,'up')});
  log('تحويل للخزنة',`من 1 أكتوبر: ${C.length} بند و ${Y.length} دفعة كانوا «خارج الخزنة» بقوا جوه الخزنة (${money(Y.reduce((s,p)=>s+p.amount,0))})`);if(await commit(true)){toast(`✓ ${Y.length} دفعة اتحولت لجوه الخزنة`);render()}}catch(e){}}
+/* ===== العيادة الخارجية ===== */
+const drN=s=>/^\s*(د\.|د\s|دكتور|دكتوره|دكتورة)/.test(s||'')?s:'د. '+s;
+let CLP='today';
+const clVisits=()=>DB.charges.filter(c=>c.clinic&&!c.void);
+const clDocs=()=>[...new Set(clVisits().map(c=>c.extDoc).filter(Boolean))];
+const clPaidExp=c=>DB.fin.find(x=>x.kind==='exp'&&!x.void&&x.clinicCh===c.id);
+function clInP(at){const d=new Date(at),n=new Date();if(CLP==='today')return d.toDateString()===n.toDateString();const m=CLP==='month'?n:new Date(n.getFullYear(),n.getMonth()-1,1);return d.getFullYear()===m.getFullYear()&&d.getMonth()===m.getMonth()}
+function vClinic(){const D=clDocs(),L=clVisits().filter(c=>clInP(c.at)).sort((a,b)=>b.at.localeCompare(a.at)),T=s=>r2(L.reduce((a,c)=>a+s(c),0));
+ const byD={};L.forEach(c=>{const k=c.extDoc||'—',o=byD[k]=byD[k]||{n:0,t:0,s:0,p:0};o.n++;o.t=r2(o.t+c.net);o.s=r2(o.s+(+c.docShare||0));if(clPaidExp(c))o.p=r2(o.p+(+c.docShare||0))});
+ return`<div class="card"><h2>🩺 العيادة الخارجية</h2><p class="hint">كشوفات دكاترة من بره — منفصلة عن ملفات المرضى. الفلوس بتدخل الخزنة، ونصيب الدكتور بيتسجل مصروف (أتعاب العيادة الخارجية)، والباقي ربح للمركز.</p>
+ <div class="grid"><div><label>الدكتور *</label><input id="clD" list="clDL" placeholder="اسم الدكتور" oninput="clDocPick()"><datalist id="clDL">${D.map(d=>`<option value="${esc(d)}">`).join('')}</datalist></div>
+ <div><label>اسم المريض *</label><input id="clN"></div><div><label>الهاتف</label><input id="clP" inputmode="tel"></div><div><label>البند</label><input id="clS" value="كشف"></div>
+ <div><label>المبلغ اللي دفعه المريض (${esc(DB.settings.cur)}) *</label><input id="clA" type="number" min="0" step="0.01" style="font-size:20px" oninput="clCalc()"></div>
+ <div><label>نصيب الدكتور (${esc(DB.settings.cur)}) *</label><input id="clDS" type="number" min="0" step="0.01" style="font-size:20px" oninput="clCalc()"></div></div>
+ <div class="summary" id="clSum"></div>
+ <label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="clNow" checked style="width:auto"> نصيب الدكتور اتصرف له دلوقتي من الخزنة (بيتسجل مصروف)</label>
+ <h3>الدفع</h3>${payHTML('k',false,false)}
+ <div class="row" style="margin-top:12px"><button class="btn ok" style="font-size:18px" onclick="saveClinic()">✓ تسجيل الكشف + إيصال</button></div></div>
+ <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">الكشوفات</h2><div class="row">${[['today','النهارده'],['month','الشهر ده'],['last','الشهر اللي فات']].map(([k,t])=>`<button class="btn ${CLP===k?'':'sec'} sm" onclick="CLP='${k}';render()">${t}</button>`).join('')}</div></div>
+ <div class="stats" style="margin-top:10px"><div class="stat"><span>عدد الكشوف</span><b>${L.length}</b></div><div class="stat"><span>إجمالي اللي اتدفع</span><b class="pos">${money(T(c=>c.net))}</b></div><div class="stat"><span>نصيب الدكاترة</span><b class="neg">${money(T(c=>+c.docShare||0))}</b></div><div class="stat"><span>صافي للمركز</span><b class="pos">${money(T(c=>c.net-(+c.docShare||0)))}</b></div></div>
+ ${Object.keys(byD).length?`<h3>حسب الدكتور</h3><div class="tw"><table><tr><th>الدكتور</th><th>الكشوف</th><th>الإجمالي</th><th>نصيبه</th><th>اتصرف له</th><th>باقي له</th><th>للمركز</th></tr>${Object.entries(byD).map(([k,o])=>`<tr><td><b>${esc(k)}</b></td><td>${o.n}</td><td>${money(o.t)}</td><td>${money(o.s)}</td><td>${money(o.p)}</td><td class="${o.s-o.p>0?'neg':''}">${money(r2(o.s-o.p))}</td><td class="pos">${money(r2(o.t-o.s))}</td></tr>`).join('')}</table></div>`:''}
+ <h3>التفاصيل</h3><div class="tw">${L.length?`<table><tr><th>التاريخ</th><th>الدكتور</th><th>المريض</th><th>البند</th><th>المبلغ</th><th>نصيب الدكتور</th><th>للمركز</th><th>صرف نصيب الدكتور</th><th></th></tr>${L.map(c=>{const P=pat(c.patientId)||{},py=DB.payments.find(p=>p.patientId===c.patientId&&!p.void),x=clPaidExp(c),old=ME.role==='reception'&&(Date.now()-new Date(c.at))>3*864e5;
+  return`<tr><td>${fdt(c.at)}</td><td>${esc(c.extDoc)}</td><td>${esc(P.name)}${P.phone?`<div class="hint" style="margin:0">${esc(P.phone)}</div>`:''}</td><td>${esc(c.service)}</td><td>${money(c.net)}</td><td>${money(+c.docShare||0)}</td><td class="pos">${money(r2(c.net-(+c.docShare||0)))}</td>
+  <td>${x?`<span class="tag" style="background:#e8f5ee;color:#14804f">✓ اتصرف ${fdt(x.at)}</span>`:old?'—':(+c.docShare>0?`<button class="btn sm" onclick="clPayDoc('${c.id}')">💵 صرف ${money(+c.docShare)}</button>`:'—')}</td>
+  <td><div class="row">${py?`<button class="btn sec sm" onclick="printReceipt('${py.id}')">🖨️</button>`:''}<button class="btn red sm" onclick="clVoid('${c.id}')">🔐 إلغاء</button></div></td></tr>`}).join('')}</table>`:'<p class="hint">مفيش كشوفات في الفترة دي</p>'}</div></div>`}
+function clDocPick(){const d=$('#clD').value.trim(),last=clVisits().filter(c=>c.extDoc===d).sort((a,b)=>b.at.localeCompare(a.at))[0];if(last){if(!$('#clA').value)$('#clA').value=last.net;if(!$('#clDS').value)$('#clDS').value=last.docShare||'';clCalc()}}
+function clCalc(){const a=val('clA'),s=val('clDS');if(a>0&&!val('kpa'))$('#kpa').value=a;$('#clSum').innerHTML=a>0?`<span>المريض دفع: <b>${money(a)}</b></span><span>نصيب الدكتور: <b class="neg">${money(s)}</b></span><span>للمركز: <b class="pos">${money(r2(a-s))}</b></span>`:''}
+async function saveClinic(){const doc=$('#clD').value.trim(),name=$('#clN').value.trim(),fee=r2(val('clA')),share=r2(val('clDS'));
+ if(!doc)return alert('اكتب اسم الدكتور');if(!name)return alert('اكتب اسم المريض');if(!(fee>0))return alert('اكتب المبلغ');if(!(share>=0)||share>fee)return alert('نصيب الدكتور لازم يكون أقل من المبلغ أو يساويه');
+ const pid=uid(),pay=readPay('k',pid);if(pay===false)return;if(!pay||Math.abs(pay.amount-fee)>0.001)return alert('المبلغ المدفوع لازم يساوي مبلغ الكشف ('+money(fee)+')');
+ const at=nowISO(),d=new Date(),P={id:pid,clinic:true,fileNo:'C-'+String(d.getDate()).padStart(2,'0')+String(d.getMonth()+1).padStart(2,'0')+'-'+String(Math.floor(Math.random()*9000)+1000),name,phone:$('#clP').value.trim(),extDoc:doc,createdAt:at,createdBy:ME.name,admitAt:at,followId:'',supId:'',docHist:[]};
+ const ch={id:uid(),patientId:pid,at,createdAt:at,by:ME.name,service:$('#clS').value.trim()||'كشف',qty:1,unit:fee,fee,discType:'',discVal:0,discAmt:0,discReason:'',discApprovedBy:'',net:fee,note:'عيادة خارجية — '+drN(doc),followId:'',void:false,grp:'other',clinic:true,extDoc:doc,docShare:share};
+ pay.for='other';pay.clinic=true;
+ withNo(async()=>{DB.patients.push(P);mark('patients',P,'new');log('عيادة خارجية',`${drN(doc)} | ${name} | ${money(fee)} | نصيب الدكتور ${money(share)}`);commitCharge(ch,P);busy(true);await commitPay(pay);busy(false);
+  if($('#clNow').checked&&share>0){const x=clExp(ch,P,pay.receiver);DB.fin.push(x);mark('fin',x,'new');log('تسجيل مصروف',`أتعاب العيادة الخارجية | ${x.desc} | ${money(share)}`)}
+  if(await commit(false)){render();doneModal(pay.id)}})}
+const clExp=(c,P,by)=>({id:uid(),kind:'exp',partner:'',at:nowISO(),cat:'أتعاب العيادة الخارجية',desc:`نصيب ${drN(c.extDoc)} — ${c.service} ${P.name||''}`,amount:+c.docShare,paidBy:by||ME.name,note:'',by:ME.name,createdAt:nowISO(),void:false,clinicCh:c.id});
+async function clPayDoc(id){const c=DB.charges.find(x=>x.id===id),P=pat(c.patientId)||{};if(clPaidExp(c))return;if(!confirm(`صرف ${money(+c.docShare)} لـ ${drN(c.extDoc)} (${c.service} ${P.name||''})؟\nهيتسجل مصروف من الخزنة.`))return;
+ const x=clExp(c,P);DB.fin.push(x);mark('fin',x,'new');log('تسجيل مصروف',`أتعاب العيادة الخارجية | ${x.desc} | ${money(x.amount)}`);if(await commit(false)){render();toast('✓ اتسجل الصرف')}}
+function clVoid(id){const c=DB.charges.find(x=>x.id===id),P=pat(c.patientId)||{},r=prompt(`إلغاء كشف ${P.name||''} (${drN(c.extDoc)})؟\nاكتب السبب:`);if(!r)return;
+ needApproval(async(appr,tok)=>{const V={void:true,voidReason:r,voidBy:ME.role==='admin'?ME.name:ME.name+' بموافقة '+appr,voidAt:nowISO()};Object.assign(c,V);mark('charges',c,'up');DB.payments.filter(p=>p.patientId===c.patientId&&!p.void).forEach(p=>{Object.assign(p,V);mark('payments',p,'up')});
+  log('إلغاء كشف عيادة خارجية',`${drN(c.extDoc)} | ${P.name||''} | ${money(c.net)} | السبب: ${r}`);if(await commit(false,tok)){render();if(clPaidExp(c))alert('⚠️ نصيب الدكتور كان اتصرف واتسجل مصروف — ألغيه من 💸 المصروفات لو الفلوس رجعت.')}},'إلغاء كشف')}
 async function refresh(){if(!ME)return;busy(true);try{await loadAll();render();toast('تم التحديث ✓')}catch(e){alert('تعذّر التحديث: '+errMsg(e))}finally{busy(false)}}
 ['click','keydown','touchstart','mousemove'].forEach(e=>addEventListener(e,()=>lastAct=Date.now(),{passive:true}));
 setInterval(()=>{if(ME&&ME.role!=='reception'&&Date.now()-lastAct>Math.max(60,+DB.settings.idleMin||120)*60000)logout(true)},15000);
@@ -269,7 +311,7 @@ let FORM_TOUCHED=false,SYNCING=false;
 document.addEventListener('input',e=>{if(e.target&&e.target.closest&&e.target.closest('#main'))FORM_TOUCHED=true},true);
 const dbSig=()=>{try{return JSON.stringify([DB.patients,DB.charges,DB.payments,DB.wallet,DB.med,DB.doctors,DB.settings,DB.users,DB.fin,DB.comm])}catch(e){return Math.random()+''}};
 /* ===== تحديث تلقائي للنسخة ===== */
-const APPVER='20261112133350',VERF='index-39.ver.json';
+const APPVER='20261115162209',VERF='index-39.ver.json';
 async function verCheck(){try{if(APPVER.startsWith('__')||document.hidden)return;if([1,2].some(i=>{const m=document.getElementById('modal'+i);return m&&m.style.display==='flex'}))return;if(typeof FORM_TOUCHED!=='undefined'&&FORM_TOUCHED)return;if(typeof DIRTY!=='undefined'&&DIRTY.length)return;
  const r=await fetch(VERF+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const j=await r.json();if(!j.v||j.v===APPVER)return;const k='masar-ver-tried';let t='';try{t=sessionStorage.getItem(k)}catch(e){}if(t===j.v)return;try{sessionStorage.setItem(k,j.v)}catch(e){}
  location.replace(location.pathname+'?v='+j.v)}catch(e){}}
@@ -281,12 +323,12 @@ async function autoSync(){if(!ME||SYNCING||BUSY||DIRTY.length||AQ.length||docume
  SYNCING=false;if(dbSig()!==before&&!FORM_TOUCHED&&!BUSY&&![...document.querySelectorAll('.modal')].some(m=>m.style.display==='flex')){const y=scrollY;render();scrollTo(0,y)}}
 setInterval(autoSync,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(autoSync,300)});addEventListener('focus',()=>setTimeout(autoSync,300));
 function render(){FORM_TOUCHED=false;
- const tabs=[['reception','📝','تسجيل حالة',can.fin()],['patients','👥','المرضى',true],['report','📊','التقارير',can.fin()],['expenses','💸','المصروفات',can.fin()],['settings','⚙️','الإعدادات',can.fin()],['audit','🧾','سجل العمليات',can.admin()],['backup','💾','النسخ الاحتياطي',can.admin()]];
+ const tabs=[['reception','📝','تسجيل حالة',can.fin()],['patients','👥','المرضى',true],['clinic','🩺','عيادة خارجية',can.fin()],['report','📊','التقارير',can.fin()],['expenses','💸','المصروفات',can.fin()],['settings','⚙️','الإعدادات',can.fin()],['audit','🧾','سجل العمليات',can.admin()],['backup','💾','النسخ الاحتياطي',can.admin()]];
  const ok=tabs.filter(t=>t[3]).map(t=>t[0]).concat('file');if(!ok.includes(VIEW))VIEW='patients';
  $('#nav').innerHTML=tabs.filter(t=>t[3]).map(t=>`<button class="${VIEW===t[0]||(VIEW==='file'&&t[0]==='patients')?'on':''}" onclick="go('${t[0]}')"><span>${t[1]}</span>${t[2]}${SECOF[t[0]]&&!unlocked(SECOF[t[0]])?' 🔐':''}</button>`).join('');
  $('#sideLogo').outerHTML=logoHTML('للطب النفسي وعلاج الإدمان',true).replace('class="logo"','class="logo" id="sideLogo"');
  $('#who').innerHTML=`<div><span class="nm">${esc(ME.name)}</span> <span class="tag">${ROLES[ME.role]}</span></div><div class="row"><button class="btn sec sm" onclick="refresh()">↻ تحديث</button>${ME.role!=='reception'?`<button class="btn sm" style="background:#d62828" onclick="mCall()">🔔 استدعاء</button>`:''}<button class="btn sec sm" onclick="myPw()">كلمة المرور</button><button class="btn sec sm" onclick="logout()">خروج</button></div><div class="zm">حجم الشاشة: <button class="btn sec sm" onclick="zoomBy(-0.1)">A−</button><button class="btn sec sm" onclick="zoomBy(0.1)">A+</button></div>`;
- const V={reception:vReception,patients:vPatients,file:vFile,report:vReport,expenses:vExp,settings:vSettings,audit:vAudit,backup:vBackup}[VIEW];
+ const V={reception:vReception,patients:vPatients,clinic:vClinic,file:vFile,report:vReport,expenses:vExp,settings:vSettings,audit:vAudit,backup:vBackup}[VIEW];
  $('#main').innerHTML=backupWarn()+V(ARG);if(VIEW==='reception')calc('n')}
 function askUnlock(s,cb){modal(`<h2>🔐 ${SECS[s]}</h2><p class="hint">اكتب كلمة سر ${SECS[s]}.</p><input type="password" id="ulP" onkeydown="if(event.key==='Enter')$('#ulOk').click()"><div class="row" style="margin-top:12px"><button class="btn" id="ulOk">فتح</button><button class="btn sec" onclick="closeModal(2)">إلغاء</button></div>`,2);
  setTimeout(()=>$('#ulP')&&$('#ulP').focus(),50);
@@ -376,7 +418,7 @@ function stmtRows(pid){const rows=[...DB.charges.filter(c=>c.patientId===pid).ma
 
 /* ===== شاشة الاستقبال ===== */
 function todayStats(){const t=dayKey(nowISO());const ch=DB.charges.filter(x=>!x.void&&dayKey(x.at)===t),py=DB.payments.filter(x=>!x.void&&dayKey(x.at)===t);let arr=0;DB.patients.forEach(P=>{const b=bal(P.id);if(b.rem>0)arr+=b.rem});
- return`<div class="stats" style="margin-bottom:16px"><div class="stat"><span>زيارات اليوم</span><b>${ch.length}</b></div><div class="stat"><span>حالات جديدة اليوم</span><b>${DB.patients.filter(x=>!x.deleted&&dayKey(x.createdAt)===t).length}</b></div><div class="stat"><span>المحصّل اليوم</span><b class="pos">${money(py.reduce((s,x)=>s+x.amount,0))}</b></div><div class="stat"><span>إجمالي المتأخرات</span><b class="neg">${money(arr)}</b></div></div>`}
+ return`<div class="stats" style="margin-bottom:16px"><div class="stat"><span>زيارات اليوم</span><b>${ch.length}</b></div><div class="stat"><span>حالات جديدة اليوم</span><b>${DB.patients.filter(x=>!x.deleted&&!x.clinic&&dayKey(x.createdAt)===t).length}</b></div><div class="stat"><span>المحصّل اليوم</span><b class="pos">${money(py.reduce((s,x)=>s+x.amount,0))}</b></div><div class="stat"><span>إجمالي المتأخرات</span><b class="neg">${money(arr)}</b></div></div>`}
 function vReception(){PREV.n=0;return(unlocked('report')?todayStats():'')+`<div class="card"><h2>🔎 مريض مسجّل من قبل؟</h2><input id="rq" placeholder="ابحث بالاسم أو رقم الملف أو الهاتف..." oninput="rqList()"><div id="rqres"></div></div>
 <div class="card"><h2>📝 تسجيل حالة جديدة</h2><p class="hint">موظف الاستقبال: <b>${esc(ME.name)}</b> — يُسجَّل تلقائياً. رقم الملف يُنشأ تلقائياً عند الحفظ.</p>${patHTML()}
 <h3>الزيارة والطبيب المعالج</h3>${visitHTML('n',true)}
@@ -519,7 +561,7 @@ function waWallet(pid){const P=pat(pid),W=walletOf(pid),S=DB.settings;const t=`*
  modal(`<h2>💬 كشف المصروف عبر واتساب</h2><label>إلى</label><select id="waTo" onchange="$('#waOther').style.display=this.value?'none':''">${opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}: ${esc(o[0])}</option>`).join('')}<option value="">رقم آخر...</option></select><input id="waOther" type="tel" placeholder="اكتب الرقم" style="margin-top:8px;display:${opts.length?'none':''}"><label style="margin-top:10px">نص الرسالة</label><textarea id="waTxt" style="min-height:260px">${esc(t)}</textarea><div class="row" style="margin-top:10px"><button class="btn wa" onclick="sendWA('${pid}','كشف المصروف الشخصي')">💬 فتح واتساب وإرسال</button><button class="btn sec" onclick="closeModal()">إلغاء</button></div>`)}
 
 /* ===== المرضى ===== */
-function myScope(P){return!P.deleted&&!(ME.role==='doctor'&&ME.docId&&P.followId!==ME.docId&&P.supId!==ME.docId)}
+function myScope(P){return!P.deleted&&!P.clinic&&!(ME.role==='doctor'&&ME.docId&&P.followId!==ME.docId&&P.supId!==ME.docId)}
 function search(q){q=norm(q);const L=DB.patients.filter(myScope);if(!q)return L.slice().reverse();return L.filter(P=>norm(P.name).includes(q)||P.fileNo.toLowerCase().includes(q)||(P.phone||'').includes(q)||(P.phone2||'').includes(q))}
 function vPatients(){return`<div class="card"><h2>👥 المرضى</h2>${ME.role==='doctor'&&ME.docId?'<p class="hint">تظهر لك الحالات التي تعالجها أو تشرف عليها فقط.</p>':''}<div class="row" id="pfTabs" style="margin-bottom:10px">${pfTabs()}</div><input id="pq" value="${esc(PQ)}" placeholder="ابحث بالاسم أو رقم الملف أو الهاتف..." oninput="PQ=this.value;pList()"><div id="plist" class="tw" style="margin-top:10px">${pListHTML(PQ)}</div></div>`}
 function pfTabs(){const L=DB.patients.filter(p=>!p.deleted&&myScope(p)),i=L.filter(p=>!p.dischargeAt).length,o=L.length-i;return[['in',`🛏️ المقيمين (${i})`],['out',`🚪 خرجوا (${o})`],['all',`الكل (${L.length})`]].map(([k,t])=>`<button class="btn ${PF===k?'':'sec'}" onclick="PF='${k}';$('#pfTabs').innerHTML=pfTabs();pList()">${t}</button>`).join('')}
@@ -647,14 +689,14 @@ function doPrint(html){$('#printArea').innerHTML=html;document.body.classList.ad
 addEventListener('afterprint',()=>document.body.classList.remove('printing'));
 function rcHead(t){const S=DB.settings;return`<div class="hd"><img src="${LOGO}" style="width:110px;height:110px;display:block;margin:0 auto 4px"><h2 style="margin:0;color:#25408f">${esc(S.center)}</h2><div>${esc(S.address)}</div><div>${esc(S.phones)}</div>${S.email?`<div dir="ltr">${esc(S.email)}</div>`:''}<h3 style="margin:8px 0 0">${t}</h3></div>`}
 function printReceipt(id){const p=DB.payments.find(x=>x.id===id),P=pat(p.patientId),b=bal(P.id,p.at);
- doPrint(`<div class="rc">${rcHead('إيصال استلام')}<table style="width:100%"><tr><th>رقم الإيصال</th><td>${p.receiptNo}</td><th>التاريخ</th><td>${fdt(p.at)}</td></tr><tr><th>اسم المريض</th><td>${esc(P.name)}</td><th>رقم الملف</th><td>${P.fileNo}</td></tr><tr><th>تاريخ الوصول</th><td>${fdt(admitOf(P))}</td><th>تاريخ الخروج</th><td>${P.dischargeAt?fdt(P.dischargeAt)+`<div style="font-size:12px">${esc(P.dischargeReason)}${P.dischargeNote?' — '+esc(P.dischargeNote):''}</div>`:'—'}</td></tr><tr><th>الطبيب المعالج</th><td>${esc(docName(P.followId))}</td><th>الطبيب المشرف</th><td>${supLine(P)?esc(supLine(P)):'—'}</td></tr><tr><th>المبلغ المدفوع</th><td><b>${money(p.amount)}</b></td><th>طريقة الدفع</th><td>${esc(p.method)}${p.txn?' — '+esc(p.bank)+' مرجع '+esc(p.txn):''}</td></tr></table>${p.note?`<p style="margin:8px 0 0"><b>ملاحظة:</b> ${esc(p.note)}</p>`:''}${itemsHTML(P.id,p.at)}<br>
+ doPrint(`<div class="rc">${rcHead('إيصال استلام')}<table style="width:100%"><tr><th>رقم الإيصال</th><td>${p.receiptNo}</td><th>التاريخ</th><td>${fdt(p.at)}</td></tr><tr><th>اسم المريض</th><td>${esc(P.name)}</td><th>رقم الملف</th><td>${P.fileNo}</td></tr><tr><th>تاريخ الوصول</th><td>${fdt(admitOf(P))}</td><th>تاريخ الخروج</th><td>${P.dischargeAt?fdt(P.dischargeAt)+`<div style="font-size:12px">${esc(P.dischargeReason)}${P.dischargeNote?' — '+esc(P.dischargeNote):''}</div>`:'—'}</td></tr><tr><th>الطبيب المعالج</th><td>${P.clinic?esc(drN(P.extDoc))+' (عيادة خارجية)':esc(docName(P.followId))}</td><th>الطبيب المشرف</th><td>${supLine(P)?esc(supLine(P)):'—'}</td></tr><tr><th>المبلغ المدفوع</th><td><b>${money(p.amount)}</b></td><th>طريقة الدفع</th><td>${esc(p.method)}${p.txn?' — '+esc(p.bank)+' مرجع '+esc(p.txn):''}</td></tr></table>${p.note?`<p style="margin:8px 0 0"><b>ملاحظة:</b> ${esc(p.note)}</p>`:''}${itemsHTML(P.id,p.at)}<br>
  <table style="width:100%"><tr><th>إجمالي المطلوب</th><th>إجمالي الخصومات</th><th>إجمالي المدفوع</th><th>المتبقي</th></tr><tr><td>${money(b.fee)}</td><td>${money(b.disc)}</td><td>${money(b.paid)}</td><td><b>${money(b.rem)}</b></td></tr></table>
  <p style="margin-top:24px">المستلم: ${esc(rcvOf(p))}&emsp;&emsp;التوقيع: ....................</p><p style="font-size:12px;color:#555">الأرصدة محسوبة حتى تاريخ هذا الإيصال.</p></div>`)}
 function printStatement(pid){const P=pat(pid),b=bal(pid);doPrint(`<div class="rc">${rcHead('كشف حساب')}<p><b>${esc(P.name)}</b> — ملف ${P.fileNo} — ${fdt(nowISO())}<br>الطبيب المعالج: ${esc(docName(P.followId))}${supLine(P)?' — المشرف: '+esc(supLine(P)):''}</p>${stmtTable(pid,false)}<br><table style="width:100%"><tr><th>إجمالي المطلوب</th><th>الخصومات</th><th>المدفوع</th><th>المتبقي</th></tr><tr><td>${money(b.fee)}</td><td>${money(b.disc)}</td><td>${money(b.paid)}</td><td><b>${money(b.rem)}</b></td></tr></table></div>`)}
 
 /* ===== المصروفات والشركاء ===== */
 const WD='سحب / توزيع أرباح على الشركاء';
-const XCATS=['مشتريات','أدوية ومستلزمات طبية','أكل ومشروبات','إيجار','رواتب','كهرباء ومياه وغاز','إنترنت وتليفونات','صيانة','مواصلات','غسيل ومنظفات','تحاليل وكشوفات خارجية','أمانة المجلس','أخرى',WD];
+const XCATS=['مشتريات','أدوية ومستلزمات طبية','أكل ومشروبات','إيجار','رواتب','كهرباء ومياه وغاز','إنترنت وتليفونات','صيانة','مواصلات','غسيل ومنظفات','تحاليل وكشوفات خارجية','أمانة المجلس','أتعاب العيادة الخارجية','أخرى',WD];
 function exps(){return DB.fin.filter(x=>x.kind==='exp'&&!x.void)}
 const DEF_PARTNERS=[{name:'فراج',pct:33.33},{name:'علام',pct:33.33},{name:'رزق',pct:33.33}];
 function partners(){const p=DB.fin.find(x=>x.id==='partners');return p&&p.list&&p.list.length?p.list:DEF_PARTNERS}
@@ -704,9 +746,9 @@ async function savePartners(n){const list=[];for(let i=0;i<n;i++){const nm=$('#p
 
 /* ===== التقارير ===== */
 function vReport(a){const t=dayKey(nowISO());a=a||{from:t,to:t};const inR=iso=>{const k=dayKey(iso);return k>=a.from&&k<=a.to};
- const ch=DB.charges.filter(x=>!x.void&&inR(x.at)),pAll=DB.payments.filter(x=>!x.void&&inR(x.at)),pays=pAll.filter(x=>x.for!=='ext'),pExt=pAll.filter(x=>x.for==='ext'),np=DB.patients.filter(x=>!x.deleted&&inR(x.createdAt)),voids=DB.payments.filter(x=>x.void&&inR(x.at)).length+DB.charges.filter(x=>x.void&&inR(x.at)).length;
+ const ch=DB.charges.filter(x=>!x.void&&inR(x.at)),pAll=DB.payments.filter(x=>!x.void&&inR(x.at)),pays=pAll.filter(x=>x.for!=='ext'),pExt=pAll.filter(x=>x.for==='ext'),np=DB.patients.filter(x=>!x.deleted&&!x.clinic&&inR(x.createdAt)),voids=DB.payments.filter(x=>x.void&&inR(x.at)).length+DB.charges.filter(x=>x.void&&inR(x.at)).length;
  const sum=(arr,f)=>r2(arr.reduce((s,x)=>s+f(x),0)),group=(arr,k,f)=>{const g={};arr.forEach(x=>{const key=k(x);g[key]=r2((g[key]||0)+f(x))});return g};
- const cm=DB.comm.filter(x=>!x.void&&inR(x.at)),cmT=sum(cm,x=>x.amount),cmDue=sum(DB.comm.filter(x=>!x.void&&x.status!=='paid'),x=>x.amount),dsc=DB.patients.filter(x=>!x.deleted&&x.dischargeAt&&inR(x.dischargeAt)),res=DB.patients.filter(x=>!x.deleted&&!x.dischargeAt).length;
+ const cm=DB.comm.filter(x=>!x.void&&inR(x.at)),cmT=sum(cm,x=>x.amount),cmDue=sum(DB.comm.filter(x=>!x.void&&x.status!=='paid'),x=>x.amount),dsc=DB.patients.filter(x=>!x.deleted&&!x.clinic&&x.dischargeAt&&inR(x.dischargeAt)),res=DB.patients.filter(x=>!x.deleted&&!x.clinic&&!x.dischargeAt).length;
  const ex=exps().filter(x=>inR(x.at)),exOp=ex.filter(x=>x.cat!==WD),wd=ex.filter(x=>x.cat===WD),coll=sum(pays,x=>x.amount),exT=sum(exOp,x=>x.amount),wdT=sum(wd,x=>x.amount),profit=r2(coll-cmT-exT),PT=partners(),exG=group(exOp,x=>x.cat,x=>x.amount);
  const byM=group(pays,x=>x.method,x=>x.amount),byU=group(pays,x=>rcvOf(x),x=>x.amount),byD=group(ch,x=>docName(x.followId),()=>1),dis=ch.filter(x=>x.discAmt>0);
  const arr=DB.patients.map(P=>({P,b:bal(P.id)})).filter(x=>x.b.rem>0).sort((x,y)=>y.b.rem-x.b.rem);
