@@ -264,7 +264,7 @@ function kpiHTML(R){const by={};R.forEach(({e})=>by[e.ptype]=(by[e.ptype]||0)+1)
  <div class="kpi"><div><div class="t">إجمالي الجلسات المنفذة</div><div class="v" style="color:#7a2fc0">${sesN} جلسة</div><div class="s" style="color:#7a2fc0">بقيمة ${money(sesV)}</div></div><div class="ic" style="background:#f5ecff">📅</div></div>
  <div class="kpi"><div><div class="t">المكافآت / السلف والخصومات</div><div class="two"><b class="pos">+${money(bon)}</b><span style="color:#ccd">|</span><b class="neg">−${money(neg)}</b></div><div class="s">صافي التسويات: ${money(r2(bon-neg))}</div></div><div class="ic" style="background:#fff4e0">⚖️</div></div>
  <div class="kpi dark"><div><div class="t">صافي الرواتب المستحقة للدفع</div><div class="v">${money(net)}</div><div class="s">اتصرف ${money(paid)} — باقي ${money(r2(net-paid))}</div></div><div class="ic" style="background:rgba(255,255,255,.12)">💰</div></div></div>`}
-function qtyCell(e,c){const dis=c.slip?'disabled':'';if(e.ptype==='shift'){const n=c.auto?c.auto.units:c.qty;return`<div class="stp"><button ${dis||(n<=0?'disabled':'')} onclick="quickShift('${e.id}',-1)">−</button><b style="cursor:pointer;text-decoration:underline dotted" title="نص شيفت / شيفت ونص" onclick="mShift('${e.id}')">${n}</b><button class="p" ${dis} onclick="quickShift('${e.id}',1)">+</button></div><div class="stl">شيفت${e.shiftH?' '+e.shiftH+' ساعة':''}${c.auto&&c.auto.absent?` — غياب ${c.auto.absent}`:''}${c.auto&&c.auto.extra?` — زيادة ${c.auto.extra}`:''}</div>`}
+function qtyCell(e,c){const dis=c.slip?'disabled':'';if(e.ptype==='shift'){const n=c.auto?c.auto.units:c.qty;return`<div class="stp"><button ${dis||(n<=0?'disabled':'')} onclick="quickShift('${e.id}',-1)">−</button><b style="cursor:pointer;text-decoration:underline dotted" title="دوس هنا لربع / نص / شيفت ونص" onclick="mShift('${e.id}')">${n}</b><button class="p" ${dis} onclick="quickShift('${e.id}',1)">+</button></div><div class="stl">شيفت${e.shiftH?' '+e.shiftH+' ساعة':''}${c.auto&&c.auto.absent?` — غياب ${c.auto.absent}`:''}${c.auto&&c.auto.extra?` — زيادة ${c.auto.extra}`:''}</div>`}
  if(e.ptype==='monthly')return`${c.mon&&!c.mon.full?`<div class="stl" style="color:#a65b00;font-weight:700">${c.mon.days} يوم من الشهر</div>`:''}<div class="stp mute"><button ${dis||(c.qty<=0?'disabled':'')} onclick="step('${e.id}',-1)">−</button><b>${c.qty}</b><button class="p" ${dis} onclick="step('${e.id}',1)">+</button></div><div class="stl">أيام غياب</div>`;
  if(c.auto)return`<div class="stp"><button ${dis||(c.auto.worked<=0?'disabled':'')} onclick="step('${e.id}',-1)">−</button><b>${c.auto.units}</b><button class="p" ${dis||(c.auto.absent<=0?'disabled':'')} onclick="step('${e.id}',1)">+</button></div><div class="stl">${UNITS[e.ptype]} من ${fday(c.auto.from).slice(0,5)}${c.auto.absent?` — غياب ${c.auto.absent}`:''}</div>`;
  return`<div class="stp"><button ${dis||(c.qty<=0?'disabled':'')} onclick="step('${e.id}',-1)">−</button><b>${c.qty}</b><button class="p" ${dis} onclick="step('${e.id}',1)">+</button></div><div class="stl">${PT[e.ptype].u}</div>`}
@@ -285,12 +285,13 @@ function drawTable(){const all=rowsAll(),R=rowsShown();$('#kp').innerHTML=kpiHTM
  if(document.activeElement&&document.activeElement.id!=='qS'){}}
 function stepDate(){const t=dayKey(nowISO());return monthOf(t)===MONTH?t:(t>MONTH?lastDayOf(MONTH):MONTH+'-01')}
 let STEPB=false;
+const FR=v=>({0.25:'¼',0.5:'½',0.75:'¾',1.5:'1½'})[v]||String(v);
 function mShift(eid){const e=emp(eid),c=calc(e,MONTH);if(c.slip)return alert('راتب الشهر ده اتصرف خلاص');const n=c.auto?c.auto.units:c.qty;
  modal(`<h2>🔁 شيفتات — ${esc(e.name)}${e.shiftH?` <span class="tag">شيفت ${e.shiftH} ساعة</span>`:''}</h2><p style="font-size:18px">الشيفتات المحسوبة الشهر ده: <b>${n}</b> × ${money(e.rate)} = <b>${money(r2(n*e.rate))}</b></p>
  <div class="grid"><div><label>التاريخ</label><input type="date" id="shD" value="${stepDate()}"></div><div><label>ملاحظة (اختياري)</label><input id="shN"></div></div>
- <h3>زوّد</h3><div class="row">${[0.5,1,1.5,2].map(v=>`<button class="btn ok" style="font-size:18px;min-width:90px" onclick="saveShift('${eid}',${v})">+${v===0.5?'½':v===1.5?'1½':v}</button>`).join('')}</div>
- <h3>قلّل</h3><div class="row">${[0.5,1].map(v=>`<button class="btn red" style="font-size:18px;min-width:90px" onclick="saveShift('${eid}',-${v})">−${v===0.5?'½':v}</button>`).join('')}</div>
- <p class="hint" style="margin-top:10px">مثال: قعد شيفت ونص في يوم ← دوس <b>+1½</b>. ${c.auto?'الموظف ده بيتحسب تلقائي كل يوم، فالزيادة هنا بتبقى فوق العادي.':''}</p><div class="row" style="margin-top:8px"><button class="btn sec" onclick="closeModal()">إغلاق</button></div>`)}
+ <h3>زوّد</h3><div class="row">${[0.25,0.5,0.75,1,1.5,2].map(v=>`<button class="btn ok" style="font-size:18px;min-width:80px" onclick="saveShift('${eid}',${v})">+${FR(v)}</button>`).join('')}</div>
+ <h3>قلّل</h3><div class="row">${[0.25,0.5,0.75,1].map(v=>`<button class="btn red" style="font-size:18px;min-width:80px" onclick="saveShift('${eid}',-${v})">−${FR(v)}</button>`).join('')}</div>
+ <p class="hint" style="margin-top:10px">مثال: قعد شيفت ونص ← دوس <b>+1½</b> · ربع شيفت ← <b>+¼</b>. ${c.auto?'الموظف ده بيتحسب تلقائي كل يوم، فالزيادة هنا بتبقى فوق العادي.':''}</p><div class="row" style="margin-top:8px"><button class="btn sec" onclick="closeModal()">إغلاق</button></div>`)}
 async function quickShift(eid,v){const e=emp(eid),c=calc(e,MONTH),d=stepDate(),n=c.auto?c.auto.units:c.qty;if(c.slip||locked(eid,d))return;if(v<0&&n+v<0)return;
  if(await save([{id:uid(),kind:'pwork',empId:eid,date:d,qty:v,u:true,note:'شيفت',by:ME.name,createdAt:nowISO(),void:false}],[[v>0?'زيادة شيفت':'تقليل شيفت',`${e.name} | ${fday(d)} | ${v>0?'+':''}${v} شيفت`]],true)){toast(`${e.name}: ${v>0?'+':''}${v} شيفت ✓`);drawTable()}}
 /* الشيفتات بالعدّ اليدوي بس — تحويل الموظفين التلقائي (مرة واحدة) مع الحفاظ على العدد الحالي */
@@ -319,7 +320,7 @@ function mDetails(eid){const e=emp(eid),c=calc(e,MONTH),s=c.slip;const items=[..
 /* ===== مزامنة تلقائية بين الأجهزة ===== */
 let SYNCING=false;
 /* ===== تحديث تلقائي للنسخة ===== */
-const APPVER='20261120184221',VERF='rawateb.ver.json';
+const APPVER='20261121135652',VERF='rawateb.ver.json';
 async function verCheck(){try{if(APPVER.startsWith('__')||document.hidden)return;if([1,2].some(i=>{const m=document.getElementById('modal'+i);return m&&m.style.display==='flex'}))return;if(typeof FORM_TOUCHED!=='undefined'&&FORM_TOUCHED)return;if(typeof DIRTY!=='undefined'&&DIRTY.length)return;
  const r=await fetch(VERF+'?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const j=await r.json();if(!j.v||j.v===APPVER)return;const k='masar-ver-tried';let t='';try{t=sessionStorage.getItem(k)}catch(e){}if(t===j.v)return;try{sessionStorage.setItem(k,j.v)}catch(e){}
  location.replace(location.pathname+'?v='+j.v)}catch(e){}}
